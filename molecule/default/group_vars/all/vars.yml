@@ -1,0 +1,16 @@
+---
+
+mailcow_version: 2023-03
+
+mailcow_database:
+  hostname: database
+  port: 3306
+  username: mailcow
+  password: mailcow
+  schema: mailcow
+
+mailcow_redis:
+  hostname: redis
+  port: 6379
+
+...

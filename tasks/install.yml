@@ -1,0 +1,196 @@
+---
+
+- name: detect directory checksum
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ mailcow_local_tmp_directory }}/checksum"
+  register: stat_checksum
+
+- name: clone repositories
+  delegate_to: localhost
+  become: false
+  when:
+    - not stat_checksum.stat.exists | default('false') | bool
+  block:
+    - name: git clone mailcow repository
+      # delegate_to: localhost
+      # become: false
+      ansible.builtin.git:
+        repo: "{{ mailcow_git.url }}"
+        version: "{{ mailcow_git.version }}"
+        # update: "{{ mailcow_git.update | default('true') | bool }}"
+        dest: "{{ mailcow_local_tmp_directory }}"
+        force: true
+        depth: 1
+      register: _git_clone
+      when:
+        - mailcow_git is defined
+        - mailcow_git.url is defined
+        - mailcow_git.version is defined
+      notify:
+        - changes git sources
+        - changed message
+      changed_when:
+        - _git_clone.changed
+
+    - name: git clone mailcow-dockerless repository
+      # delegate_to: localhost
+      # become: false
+      ansible.builtin.git:
+        repo: "{{ mailcow_patches.url }}"
+        version: "{{ mailcow_patches.version }}"
+        # update: "{{ mailcow_patches.update | default('true') | bool }}"
+        dest: "{{ mailcow_local_tmp_directory }}/../dockerless"
+        force: true
+        depth: 1
+      register: _git_clone
+      when:
+        - mailcow_patches is defined
+        - mailcow_patches.url is defined
+        - mailcow_patches.version is defined
+      notify:
+        - changes git sources
+        - changed message
+      changed_when:
+        - _git_clone.changed
+
+    - name: create directories
+      ansible.builtin.file:
+        state: directory
+        path: "{{ mailcow_local_tmp_directory }}/data/web/{{ item }}"
+        mode: 0755
+      loop:
+        - rspamd_custom_maps
+        - global_sieve
+        - tpls
+
+    - name: fix rights for cache directory
+      ansible.builtin.file:
+        path: "{{ mailcow_local_tmp_directory }}/data/web/web/templates/cache"
+        mode: 0775
+
+    - name: patch mailcow data
+      ansible.builtin.shell: |
+        cd {{ mailcow_local_tmp_directory }}
+        set -e
+        ln -sf data mailcow
+        ln -sf ../data/conf/rspamd mailcow/.
+        ln -sf ../data/conf/dovecot mailcow/.
+        ln -sf ../data/conf/clamav mailcow/.
+        #
+        find mailcow/ -type f -name "*.php" -exec dos2unix {} \;
+        #
+        for p in $(ls -1 ../dockerless/patches/{1,2,3}*.patch | sort); do
+            echo "${p}"
+            patch --strip 0 --input ${p}
+            echo " "
+        done
+        rm -f mailcow/rspamd mailcow/dovecot mailcow/clamav mailcow
+        #
+        find . -type f -name "*.php" -exec sha256sum {} + | LC_ALL=C sort | sha256sum | cut -d ' ' -f1 > checksum
+
+- name: syncronize local checkout to our remote system
+  ansible.posix.synchronize:
+    src: "{{ mailcow_local_tmp_directory }}/"
+    dest: "{{ mailcow_remote_tmp_directory }}/"
+    rsync_opts:
+      - "--archive"
+      - "--recursive"
+      - "--delete"
+      - "--exclude='.git'"
+      - "--quiet"
+
+- name: create remote install directory
+  ansible.builtin.file:
+    path: "/usr/share/mailcow-{{ mailcow_git.version }}"
+    state: directory
+    group: "{{ mailcow_group }}"
+    mode: 0755
+
+- name: create link for mailcow-{{ mailcow_git.version }} to /usr/share/mailcow
+  ansible.builtin.file:
+    src: "/usr/share/mailcow-{{ mailcow_git.version }}"
+    dest: /usr/share/mailcow
+    # owner: "{{ icingaweb_user }}"
+    # group: "{{ icingaweb_group }}"
+    group: "{{ mailcow_group }}"
+    mode: 0755
+    state: link
+    force: true
+  #notify:
+  #  - restart php-fpm
+
+- name: syncronize changed sources
+  delegate_to: "{{ inventory_hostname }}"
+  become: true
+  ansible.posix.synchronize:
+    src: "{{ mailcow_remote_tmp_directory }}/data/web/"
+    dest: /usr/share/mailcow/web
+    rsync_opts:
+      - "--archive"
+      - "--recursive"
+      - "--delete"
+      - "--exclude inc/vars.local.inc.php"
+      - "--quiet"
+      - "--chown={{ mailcow_owner }}:{{ mailcow_group }}"
+  register: rsync_out
+
+# TODO
+# make the files configurable
+- name: syncronize changed sources
+  delegate_to: "{{ inventory_hostname }}"
+  become: true
+  ansible.posix.synchronize:
+    src: "{{ mailcow_remote_tmp_directory }}/data/conf/rspamd/"
+    dest: /usr/share/mailcow/rspamd
+    rsync_opts:
+      - "--archive"
+      - "--recursive"
+      - "--delete"
+      - "--quiet"
+      - "--chown={{ mailcow_owner }}:{{ mailcow_group }}"
+  register: rsync_out
+
+# TODO
+# make the files configurable
+- name: syncronize changed sources
+  delegate_to: "{{ inventory_hostname }}"
+  become: true
+  ansible.posix.synchronize:
+    src: "{{ mailcow_remote_tmp_directory }}/data/conf/dovecot/"
+    dest: /usr/share/mailcow/dovecot
+    rsync_opts:
+      - "--archive"
+      - "--recursive"
+      - "--delete"
+      - "--quiet"
+      - "--chown={{ mailcow_owner }}:{{ mailcow_group }}"
+  register: rsync_out
+
+# TODO
+# make the files configurable
+- name: syncronize changed sources
+  delegate_to: "{{ inventory_hostname }}"
+  become: true
+  ansible.posix.synchronize:
+    src: "{{ mailcow_remote_tmp_directory }}/data/conf/clamav/"
+    dest: /usr/share/mailcow/clamav
+    rsync_opts:
+      - "--archive"
+      - "--recursive"
+      - "--delete"
+      - "--quiet"
+      - "--chown={{ mailcow_owner }}:{{ mailcow_group }}"
+  register: rsync_out
+
+- name: fix cache rights
+  ansible.builtin.file:
+    path: "/usr/share/mailcow/web/templates/cache"
+    owner: "{{ mailcow_owner }}"
+    group: "{{ mailcow_group }}"
+    mode: 0775
+
+
+
+...

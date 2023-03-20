@@ -1,0 +1,46 @@
+---
+
+- name: prepare container
+  hosts: all
+  gather_facts: true
+
+  pre_tasks:
+    - name: update pacman system
+      command: |
+        pacman --refresh --sync --sysupgrade --noconfirm
+      when:
+        - ansible_distribution | lower == 'archlinux'
+
+    - debug:
+        msg:
+          - "os family            : {{ ansible_os_family }}"
+          - "distribution         : {{ ansible_distribution }}"
+          - "distribution version : {{ ansible_distribution_major_version }}"
+          - "ansible version      : {{ ansible_version.full }}"
+          - "python version       : {{ ansible_python.version.major }}.{{ ansible_python.version.minor }}"
+
+- name: prepare database container
+  hosts: database
+  gather_facts: true
+
+  roles:
+    - role: apparmor
+    - role: snapd
+    - role: mariadb
+
+
+- name: prepare redis container
+  hosts: redis
+  gather_facts: true
+
+  roles:
+    - role: redis
+
+- name: prepare instance container
+  hosts: instance
+  gather_facts: true
+
+  roles:
+    - role: php
+    - role: pecl
+    - role: nginx

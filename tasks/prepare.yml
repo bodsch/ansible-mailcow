@@ -1,0 +1,97 @@
+---
+
+- name: include OS specific configuration
+  ansible.builtin.include_vars: "{{ lookup('first_found', params) }}"
+  vars:
+    params:
+      paths:
+        - "vars"
+      files:
+        # eg. debian-10 / ubuntu-20 / centos-8 / oraclelinux-8
+        - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+        # eg. archlinux-systemd / archlinux-openrc
+        - "{{ ansible_distribution | lower }}-{{ ansible_service_mgr | lower }}.yml"
+        # eg. debian / ubuntu / centos / oraclelinux
+        - "{{ ansible_distribution | lower }}.yml"
+        # eg. redhat / debian
+        - "{{ ansible_os_family | lower }}.yml"
+        # artixlinux
+        - "{{ ansible_os_family | lower | replace(' ', '') }}.yml"
+        - default.yml
+      skip: true
+
+- name: update package cache
+  ansible.builtin.package:
+    update_cache: true
+
+- name: install dependencies
+  become: true
+  ansible.builtin.package:
+    name: "{{ mailcow_dependencies }}"
+    state: present
+  when:
+    - mailcow_dependencies | default([]) | count > 0
+
+- name: gathering facts now
+  ansible.builtin.setup:
+
+- name: define delegate instance for download handling
+  ansible.builtin.set_fact:
+    mailcow_delegate_to: "{{ ansible_host }}"
+    mailcow_local_tmp_directory: "{{
+        lookup('env', 'CUSTOM_LOCAL_TMP_DIRECTORY') |
+        default('/var/cache/ansible/mailcow', true) }}/{{ mailcow_version }}"
+  run_once: "{{ 'true' if not mailcow_direct_download else 'false' }}"
+  when:
+    - mailcow_direct_download
+
+- name: create download directory
+  become: false
+  delegate_to: "{{ mailcow_delegate_to }}"
+  ansible.builtin.file:
+    path: "{{ mailcow_local_tmp_directory }}"
+    state: directory
+    mode: 0750
+  run_once: "{{ 'true' if not mailcow_direct_download else 'false' }}"
+
+- name: create remote temp directory
+  ansible.builtin.file:
+    path: "{{ mailcow_remote_tmp_directory }}"
+    state: directory
+    mode: 0750
+
+- name: define current_date and current_timestamp
+  ansible.builtin.set_fact:
+    current_date: "{{ ansible_date_time.iso8601[0:10] }}"
+    current_timestamp: "{{ ansible_date_time.iso8601[0:19] }}"
+
+- name: install build dependencies
+  become: true
+  ansible.builtin.package:
+    name: "{{ mailcow_build_dependecies }}"
+    state: present
+  when:
+    - mailcow_build_dependecies | default([]) | count > 0
+
+- name: create ansible local facts directory
+  ansible.builtin.file:
+    dest: /etc/ansible/facts.d
+    state: directory
+    owner: root
+    group: root
+    mode: 0775
+
+- name: merge mailcow configuration between defaults and custom
+  ansible.builtin.set_fact:
+    mailcow_git: "{{ mailcow_defaults_git | combine(mailcow_git, recursive=True) }}"
+    mailcow_patches: "{{ mailcow_defaults_patches | combine(mailcow_patches, recursive=True) }}"
+    mailcow_database: "{{ mailcow_defaults_database | combine(mailcow_database, recursive=True) }}"
+    mailcow_redis: "{{ mailcow_defaults_redis | combine(mailcow_redis, recursive=True) }}"
+
+- name: create remote install directory
+  ansible.builtin.file:
+    path: "/usr/share/mailcow-{{ mailcow_git.version }}"
+    state: directory
+    mode: 0750
+
+...

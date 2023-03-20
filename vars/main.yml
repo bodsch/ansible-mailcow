@@ -1,0 +1,56 @@
+---
+
+mailcow_delegate_to: localhost
+
+# dashboard_source: "{{ mailcow_git.url | dashboard_hash(mailcow_git.version) }}"
+
+mailcow_local_tmp_directory: "{{
+  lookup('env', 'CUSTOM_LOCAL_TMP_DIRECTORY') |
+  default(lookup('env', 'HOME') ~ '/.cache/ansible/mailcow', true) }}/{{ mailcow_version }}"
+
+mailcow_remote_tmp_directory: "/var/tmp/mailcow/{{ mailcow_version  }}"
+
+mailcow_defaults_git:
+  assets: "https://github.com/mailcow/mailcow-dockerized/archive/refs/tags/{{ mailcow_version }}.tar.gz"
+  url: "{{ mailcow_repository }}"
+  version: "{{ mailcow_version }}"
+
+mailcow_defaults_patches:
+  url: "https://github.com/bodsch/mailcow-dockerless"
+  version: main
+
+mailcow_defaults_database:
+  hostname: ""
+  port: 3306
+  username: ""
+  password: ""
+  schema: mailcow
+
+mailcow_defaults_redis:
+  hostname: ""
+  port: 6379
+
+mailcow_dependencies:
+  - git
+  - rsync
+
+# mailcow_build_dependecies:
+#   - libzstd-dev
+#   - libmagickwand-dev
+#   - libmemcached-dev
+#   - php-dev
+#   - php-pear
+#   # - php-mbstring
+#
+# mailcow_php_pecl_extensions:
+#   - APCu-5.1.22
+#   - imagick-3.7.0
+#   - mailparse-3.1.4
+#   - memcached-3.2.0
+#   - redis-5.3.7
+#
+# mailcow_php_pecl_install_command: "pecl install"
+
+changed_git_sources: false
+
+...

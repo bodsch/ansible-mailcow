@@ -1,0 +1,9 @@
+---
+
+- name: create mailcow configuration
+  template:
+    src: inc/vars.local.inc.php.j2
+    dest: "/usr/share/mailcow/web/inc/vars.local.inc.php"
+    mode: 0644
+
+...

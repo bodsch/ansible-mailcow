@@ -1,0 +1,200 @@
+---
+
+nginx_gzip:
+  enabled: true
+
+nginx_logformat:
+  json_combined:
+    format: |
+      '{'
+        '"time_local": "$time_local",'
+        '"remote_addr": "$remote_addr",'
+        '"remote_user": "$remote_user",'
+        '"request": "$request",'
+        '"status": "$status",'
+        '"body_bytes_sent": "$body_bytes_sent",'
+        '"request_time": "$request_time",'
+        '"http_referrer": "$http_referer",'
+        '"http_user_agent": "$http_user_agent"'
+      '}';
+    # escape: json
+
+nginx_vhosts:
+  # HTTP
+  # ssl: false
+  # LE: false
+  default:
+    # Set to True if you want to redirect http to https
+    ssl:
+      enabled: false
+
+  nginx-status:
+    filename: 00-status
+    state: present  # default: present
+    enabled: true   # default: true
+    # domain(s)
+    domains:
+      - localhost
+    # listen
+    listen: 127.0.0.1:8088
+    # locations
+    locations:
+      "/nginx_status":
+        options: |
+          stub_status on;
+          access_log off;
+          allow 127.0.0.1;
+          deny all;
+
+  mailcow:
+    filename: 10-mailcow.conf
+    state: present  # default: present
+    enabled: true   # default: true
+
+    domains:
+      - molecule.matrix.lan
+      - mailcow.molecule.lan
+
+    listen:
+      - 80
+
+    root: /usr/share/mailcow/web
+
+    index:
+      - index.php
+
+    logfiles:
+      access:
+        file: /var/log/nginx/mailcow.molecule.lan/access.log
+        loglevel: main
+      error:
+        file: /var/log/nginx/mailcow.molecule.lan/error.log
+        loglevel: notice
+
+    locations:
+      "/":
+        options: |
+          try_files $uri $uri/ @strip-ext;
+
+      "/qhandler":
+        options: |
+          rewrite ^/qhandler/(.*)/(.*) /qhandler.php?action=$1&hash=$2;
+
+      "/edit":
+        options: |
+          rewrite ^/edit/(.*)/(.*) /edit.php?$1=$2;
+
+      "@strip-ext":
+        options: |
+          rewrite ^(.*)$ $1.php last;
+
+      "~ ^/api/v1/(.*)$":
+        options: |
+          try_files $uri $uri/ /json_api.php?query=$1&$args;
+
+      "^~ /inc/lib/":
+        options: |
+          deny all;
+          return 403;
+
+      "~ \\.php$":
+        options: |
+          try_files                 $uri =404;
+
+          fastcgi_split_path_info   ^(.+\.php)(/.+)$;
+          fastcgi_index             index.php;
+          fastcgi_param             SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          fastcgi_param             PATH_INFO $fastcgi_path_info;
+          fastcgi_read_timeout      3600;
+          fastcgi_send_timeout      3600;
+          fastcgi_pass              unix:/run/php/worker-01.sock;
+
+          include fastcgi_params;
+
+      # error_page 502 @awaitingupstream;
+      #
+      # location @awaitingupstream {
+      #   rewrite ^(.*)$ /_status.502.html break;
+      # }
+      #
+      "~ ^/cache/(.*)$":
+        options: |
+          try_files $uri $uri/ /resource.php?file=$1;
+
+  rspam:
+    filename: 10-rspam.conf
+    state: present  # default: present
+    enabled: true   # default: true
+
+    domains:
+      - _
+
+    listen:
+      - 127.0.0.1:8081
+
+    root: /usr/share/mailcow/rspamd/dynmaps
+
+    index:
+      - index.php
+
+    logfiles:
+      access:
+        file: /var/log/nginx/rspam-dynmaps/access.log
+        loglevel: main
+      error:
+        file: /var/log/nginx/rspam-dynmaps/error.log
+        loglevel: notice
+
+    locations:
+      "~ \\.php$":
+        options: |
+          try_files                 $uri =404;
+
+          fastcgi_split_path_info   ^(.+\.php)(/.+)$;
+          fastcgi_index             index.php;
+          fastcgi_param             SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          fastcgi_param             PATH_INFO $fastcgi_path_info;
+          fastcgi_read_timeout      3600;
+          fastcgi_send_timeout      3600;
+          fastcgi_pass              unix:/run/php/worker-01.sock;
+
+          include fastcgi_params;
+
+  meta_exporter:
+    filename: 10-meta_exporter.conf
+    state: present  # default: present
+    enabled: true   # default: true
+
+    domains:
+      - meta_exporter
+
+    listen:
+      - 127.0.0.1:9081
+
+    root: /usr/share/mailcow/rspamd/meta_exporter
+
+    index:
+      - index.php
+
+    logfiles:
+      access:
+        file: /var/log/nginx/rspamd-meta_exporter/access.log
+        loglevel: main
+      error:
+        file: /var/log/nginx/rspamd-meta_exporter/error.log
+        loglevel: notice
+
+    locations:
+      "~ \\.php$":
+        options: |
+          try_files                 $uri =404;
+
+          fastcgi_split_path_info   ^(.+\.php)(/.+)$;
+          fastcgi_index             index.php;
+          fastcgi_param             SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          fastcgi_param             PATH_INFO $fastcgi_path_info;
+          fastcgi_read_timeout      3600;
+          fastcgi_send_timeout      3600;
+          fastcgi_pass              unix:/run/php/worker-01.sock;
+
+          include fastcgi_params;

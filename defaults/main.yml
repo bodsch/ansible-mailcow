@@ -1,0 +1,25 @@
+---
+
+mailcow_version: 2023-03
+
+mailcow_repository: https://github.com/mailcow/mailcow-dockerized.git
+
+mailcow_git: {}
+#  assets: "https://github.com/mailcow/mailcow-dockerized/archive/refs/tags/{{ mailcow_version }}.tar.gz"
+#  url: "{{ mailcow_repository }}"
+#  version: "{{ mailcow_version }}"
+
+mailcow_patches: {}
+#  url:
+#  version:
+
+mailcow_upgrade: false
+
+mailcow_direct_download: false
+
+mailcow_owner: www-data
+mailcow_group: www-data
+
+mailcow_database: {}
+
+mailcow_redis: {}
